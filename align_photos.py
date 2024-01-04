@@ -14,18 +14,6 @@ eyes_cascade = cv2.CascadeClassifier( str(EYES_CASCADE_PATH) )
 
 
 
-
-def mainEyes(eyes_sequence) -> list:
-    all_eyes = list(eyes_sequence)
-    all_eyes.sort(key=lambda e: e[2])
-
-    return all_eyes[:2]
-
-
-
-
-
-
 for img_path in pathlib.Path(PIC_PATH).iterdir():
 
     img = cv2.imread( str(img_path), 1)  # load image in grayscale
