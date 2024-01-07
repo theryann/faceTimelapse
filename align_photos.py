@@ -1,6 +1,7 @@
-from PIL import Image
+from PIL import Image, ImageDraw
 import pathlib
 import cv2
+import numpy as np
 
 PIC_PATH = 'pictures'
 EXPORT_PATH = 'out'
@@ -82,11 +83,38 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
 
         pil_img = pil_img.rotate(0, translate = translate_vector )  # move this left eye to the taget coordinates
 
+        # rotate face to right angle
 
+        # get Vectors between the eyes to get angle between eye line
+        a = (np.array(source_eye_right) + np.array(translate_vector)) - np.array(TARGET_EYE_LEFT) # Vector between left eye and this faces right eye
+        b = np.array(TARGET_EYE_RIGHT) - np.array(TARGET_EYE_LEFT) # Vector between left eye and target faces right eye
+
+        angle_deg: float = np.degrees( np.arccos(
+            np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
+        ))
+        
+        # if TARGET_EYE_RIGHT[1] < source_eye_right[1]:
+        #     angle_deg *= -1
+
+        pil_img = pil_img.rotate( angle_deg, Image.BILINEAR, center=TARGET_EYE_LEFT )
+
+        draw = ImageDraw.Draw(pil_img)
+        draw.line(
+            [
+                tuple((np.array(source_eye_left)+np.array(translate_vector)).tolist()),
+                tuple((np.array(translate_vector)+np.array(source_eye_right)).tolist())
+            ],
+            fill=(0, 0, 255),
+            width=6
+        )
+        draw.line([TARGET_EYE_LEFT, TARGET_EYE_RIGHT], fill=(255, 0, 0), width=6)
+
+
+        # save new image
         pil_img.save(save_path)
         pil_img.close()
 
-        if i > 40:
+        if i > 3:
             quit()
 
 
