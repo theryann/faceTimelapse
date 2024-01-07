@@ -72,6 +72,22 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
             TARGET_EYE_LEFT  = source_eye_left
             TARGET_EYE_RIGHT = source_eye_right
 
+        save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
+
+        pil_img: Image = Image.open( str(img_path) )
+        pil_img = pil_img.rotate(90, expand=True)
+
+        translate_vector: tuple[int, int] = ( TARGET_EYE_LEFT[0] - source_eye_left[0],
+                                              TARGET_EYE_LEFT[1] - source_eye_left[1] )
+
+        pil_img = pil_img.rotate(0, translate = translate_vector )  # move this left eye to the taget coordinates
+
+
+        pil_img.save(save_path)
+        pil_img.close()
+
+        if i > 40:
+            quit()
 
 
 
