@@ -18,6 +18,35 @@ TARGET_EYE_LEFT: tuple[int, int]
 TARGET_EYE_RIGHT: tuple[int, int]
 
 
+def scale_image(image: Image, factor: float, scale_origin: tuple[int, int]) -> Image:
+    translation_vector = ( -scale_origin[0], -scale_origin[1] )
+    width, height = image.size
+
+    image = image.transform(
+        (width, height),
+        Image.AFFINE,
+        (1, 0, translation_vector[0], 0, 1, translation_vector[1])
+    )
+
+    # scale image
+    image = image.transform(
+        ( int(width * factor), int(height * factor) ),
+        Image.AFFINE,
+        ( factor, 0, 0, 0, factor, 0 )
+    )
+    # crop image
+    image = image.crop((0, 0, width, height))
+
+    image = image.transform(
+        (width, height),
+        Image.AFFINE,
+        (1, 0, -translation_vector[0], 0, 1, -translation_vector[1])
+    )
+
+    return image
+
+
+
 for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
 
     img = cv2.imread( str(img_path), 1)  # load image in grayscale
@@ -92,7 +121,7 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
         angle_deg: float = np.degrees( np.arccos(
             np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
         ))
-        
+
         # if TARGET_EYE_RIGHT[1] < source_eye_right[1]:
         #     angle_deg *= -1
 
@@ -109,12 +138,19 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
         )
         draw.line([TARGET_EYE_LEFT, TARGET_EYE_RIGHT], fill=(255, 0, 0), width=6)
 
+        print(  np.array(pil_img)[0][0] ) 
+
+        # scale face to match target
+        face_scaling_factor: float = np.linalg.norm(a) / np.linalg.norm(b) # ratio of current face to target face
+
+        # pil_img = scale_image( pil_img, face_scaling_factor, TARGET_EYE_LEFT )
+
 
         # save new image
         pil_img.save(save_path)
         pil_img.close()
 
-        if i > 3:
+        if i > 8:
             quit()
 
 
