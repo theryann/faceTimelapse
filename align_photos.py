@@ -34,11 +34,28 @@ def scale_image(image: Image, factor: float) -> Image:
 
     if factor > 1:
         # crop upscaled image to the target dimensions
-        crop_h, crop_v = (image.size[0] - TARGET_DIMENSIONS[0]) // 2, (image.size[1] - TARGET_DIMENSIONS[1]) // 2
-        image = image.crop(( crop_h, crop_v, crop_h, crop_v ))
+        h, v = (image.size[0] - TARGET_DIMENSIONS[0]) // 2, (image.size[1] - TARGET_DIMENSIONS[1]) // 2
+
+        image = image.crop(( h, v, image.size[0] - h, image.size[1] - v ))
 
     res_image.paste( image )
     return res_image
+
+def calc_new_eye_pos(scaling_factor: float, old_pos: tuple) -> tuple:
+    '''
+    after scaling the image the position of the eyes change.
+    this functions calculates the new position of (the left) eye on which the remaining transformation base.
+    '''
+    new_pos: np.ndarray = np.array(old_pos) * scaling_factor
+
+    if scaling_factor > 1:
+        h, v = tuple(
+            ( np.array(TARGET_DIMENSIONS) * scaling_factor - np.array(TARGET_DIMENSIONS) ) // 2
+        )
+
+        new_pos -= np.array([ h, v ])
+
+    return tuple( new_pos.astype(int) )
 
 
 
@@ -97,11 +114,11 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
         if i == 0:
             TARGET_EYE_LEFT  = source_eye_left
             TARGET_EYE_RIGHT = source_eye_right
-            TARGET_DIMENSIONS = img.shape[:2]
+            TARGET_DIMENSIONS = img.shape[1], img.shape[0] # swap order because of vertical mode
 
-        #################
-        # TRANSFORM image
-        #################
+        ###################
+        # TRANSFORM Image #
+        ###################
 
         pil_img: Image = Image.open( str(img_path) )
         pil_img = pil_img.rotate(90, expand=True)  # ensure that the horizontal dimensions are recognized
@@ -121,7 +138,6 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
 
 
 
-
         # rotate face to right angle
 
 
@@ -132,7 +148,17 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
         if source_eye_right[1] > TARGET_EYE_RIGHT[1]:
             angle_deg *= -1
 
-        pil_img = pil_img.rotate( angle_deg, Image.BILINEAR, center=TARGET_EYE_LEFT )
+        # pil_img = pil_img.rotate( angle_deg, Image.BILINEAR, center=TARGET_EYE_LEFT )
+
+        start = calc_new_eye_pos(face_scaling_factor, source_eye_left)
+        end = calc_new_eye_pos(face_scaling_factor, source_eye_right)
+
+
+        draw = ImageDraw.Draw(pil_img)
+        draw.line( [ source_eye_left, source_eye_right ], fill='blue', width=10 )
+        draw.line( [ start, end ], fill='red', width=10 )
+
+
 
 
         # save new image
@@ -140,7 +166,7 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
         pil_img.save(save_path)
         pil_img.close()
 
-        if i > 8:
+        if i > 18:
             quit()
 
 
