@@ -16,34 +16,30 @@ eyes_cascade = cv2.CascadeClassifier( str(EYES_CASCADE_PATH) )
 
 TARGET_EYE_LEFT: tuple[int, int]
 TARGET_EYE_RIGHT: tuple[int, int]
+TARGET_DIMENSIONS: tuple[int, int]
 
 
-def scale_image(image: Image, factor: float, scale_origin: tuple[int, int]) -> Image:
-    translation_vector = ( -scale_origin[0], -scale_origin[1] )
-    width, height = image.size
+def scale_image(image: Image, factor: float) -> Image:
+    '''
+    create new image with target dimensions. then paste the up- or downscaled image into the new.
+    this avoids rounding errors that result in widths/heights being off by one pixel.
+    '''
 
-    image = image.transform(
-        (width, height),
-        Image.AFFINE,
-        (1, 0, translation_vector[0], 0, 1, translation_vector[1])
+    res_image: Image = Image.new('RGB', TARGET_DIMENSIONS)
+
+    # scale the image
+    image = image.resize(
+        ( int(image.size[0] * factor), int(image.size[1] * factor) )
     )
 
-    # scale image
-    image = image.transform(
-        ( int(width * factor), int(height * factor) ),
-        Image.AFFINE,
-        ( factor, 0, 0, 0, factor, 0 )
-    )
-    # crop image
-    image = image.crop((0, 0, width, height))
+    if factor > 1:
+        # crop upscaled image to the target dimensions
+        crop_h, crop_v = (image.size[0] - TARGET_DIMENSIONS[0]) // 2, (image.size[1] - TARGET_DIMENSIONS[1]) // 2
+        image = image.crop(( crop_h, crop_v, crop_h, crop_v ))
 
-    image = image.transform(
-        (width, height),
-        Image.AFFINE,
-        (1, 0, -translation_vector[0], 0, 1, -translation_vector[1])
-    )
+    res_image.paste( image )
+    return res_image
 
-    return image
 
 
 
@@ -101,52 +97,46 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
         if i == 0:
             TARGET_EYE_LEFT  = source_eye_left
             TARGET_EYE_RIGHT = source_eye_right
+            TARGET_DIMENSIONS = img.shape[:2]
 
-        save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
+        #################
+        # TRANSFORM image
+        #################
 
         pil_img: Image = Image.open( str(img_path) )
-        pil_img = pil_img.rotate(90, expand=True)
+        pil_img = pil_img.rotate(90, expand=True)  # ensure that the horizontal dimensions are recognized
 
         translate_vector: tuple[int, int] = ( TARGET_EYE_LEFT[0] - source_eye_left[0],
                                               TARGET_EYE_LEFT[1] - source_eye_left[1] )
 
-        pil_img = pil_img.rotate(0, translate = translate_vector )  # move this left eye to the taget coordinates
+        # get Vectors between the eyes to get angle between eye line
+        a = (np.array(source_eye_right) + np.array(translate_vector)) - np.array(TARGET_EYE_LEFT) # Vector between left eye and this faces right eye
+        b =  np.array(TARGET_EYE_RIGHT) - np.array(TARGET_EYE_LEFT) # Vector between left eye and target faces right eye
+
+
+        # scale face to match target
+        face_scaling_factor: float = 1 / (np.linalg.norm(a) / np.linalg.norm(b)) # ratio of current face to target face
+        pil_img = scale_image( pil_img, face_scaling_factor )
+
+
+
+
 
         # rotate face to right angle
 
-        # get Vectors between the eyes to get angle between eye line
-        a = (np.array(source_eye_right) + np.array(translate_vector)) - np.array(TARGET_EYE_LEFT) # Vector between left eye and this faces right eye
-        b = np.array(TARGET_EYE_RIGHT) - np.array(TARGET_EYE_LEFT) # Vector between left eye and target faces right eye
 
         angle_deg: float = np.degrees( np.arccos(
             np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
         ))
 
-        # if TARGET_EYE_RIGHT[1] < source_eye_right[1]:
-        #     angle_deg *= -1
+        if source_eye_right[1] > TARGET_EYE_RIGHT[1]:
+            angle_deg *= -1
 
         pil_img = pil_img.rotate( angle_deg, Image.BILINEAR, center=TARGET_EYE_LEFT )
 
-        draw = ImageDraw.Draw(pil_img)
-        draw.line(
-            [
-                tuple((np.array(source_eye_left)+np.array(translate_vector)).tolist()),
-                tuple((np.array(translate_vector)+np.array(source_eye_right)).tolist())
-            ],
-            fill=(0, 0, 255),
-            width=6
-        )
-        draw.line([TARGET_EYE_LEFT, TARGET_EYE_RIGHT], fill=(255, 0, 0), width=6)
-
-        print(  np.array(pil_img)[0][0] ) 
-
-        # scale face to match target
-        face_scaling_factor: float = np.linalg.norm(a) / np.linalg.norm(b) # ratio of current face to target face
-
-        # pil_img = scale_image( pil_img, face_scaling_factor, TARGET_EYE_LEFT )
-
 
         # save new image
+        save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
         pil_img.save(save_path)
         pil_img.close()
 
@@ -159,10 +149,10 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
 
 
 
-    cv2.imshow('img', cv2.resize(img, (388, 690) ))
+    # cv2.imshow('img', cv2.resize(img, (388, 690) ))
 
-    if cv2.waitKey( 0 ) == ord('q'):
-        quit()
+    # if cv2.waitKey( 0 ) == ord('q'):
+    #     quit()
 
-cv2.destroyAllWindows()
+# cv2.destroyAllWindows()
 
