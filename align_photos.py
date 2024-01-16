@@ -44,7 +44,7 @@ def scale_image(image: Image, factor: float) -> Image:
 def calc_new_eye_pos(scaling_factor: float, old_pos: tuple) -> tuple:
     '''
     after scaling the image the position of the eyes change.
-    this functions calculates the new position of (the left) eye on which the remaining transformation base.
+    this functions calculates the new position of the eyes (or any other point) after the scaling.
     '''
     new_pos: np.ndarray = np.array(old_pos) * scaling_factor
 
@@ -123,62 +123,43 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
         pil_img: Image = Image.open( str(img_path) )
         pil_img = pil_img.rotate(90, expand=True)  # ensure that the horizontal dimensions are recognized
 
-        translate_vector: tuple[int, int] = ( TARGET_EYE_LEFT[0] - source_eye_left[0],
-                                              TARGET_EYE_LEFT[1] - source_eye_left[1] )
-
         # get Vectors between the eyes to get angle between eye line
-        a = (np.array(source_eye_right) + np.array(translate_vector)) - np.array(TARGET_EYE_LEFT) # Vector between left eye and this faces right eye
-        b =  np.array(TARGET_EYE_RIGHT) - np.array(TARGET_EYE_LEFT) # Vector between left eye and target faces right eye
+        a = np.array(source_eye_right) - np.array(source_eye_left) # Vector between the eyes of the current face
+        b = np.array(TARGET_EYE_RIGHT) - np.array(TARGET_EYE_LEFT) # Vector between target eyes
 
 
         # scale face to match target
-        face_scaling_factor: float = 1 / (np.linalg.norm(a) / np.linalg.norm(b)) # ratio of current face to target face
+        face_scaling_factor: float = 1 / ( np.linalg.norm(a) / np.linalg.norm(b) ) # ratio of current face to target face
         pil_img = scale_image( pil_img, face_scaling_factor )
 
 
-
-
         # rotate face to right angle
+        new_left_eye  = calc_new_eye_pos(face_scaling_factor, source_eye_left)
+        new_right_eye = calc_new_eye_pos(face_scaling_factor, source_eye_right)
 
-
+        # angle to rotate the face by
         angle_deg: float = np.degrees( np.arccos(
             np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
         ))
 
-        if source_eye_right[1] > TARGET_EYE_RIGHT[1]:
-            angle_deg *= -1
-
-        # pil_img = pil_img.rotate( angle_deg, Image.BILINEAR, center=TARGET_EYE_LEFT )
-
-        start = calc_new_eye_pos(face_scaling_factor, source_eye_left)
-        end = calc_new_eye_pos(face_scaling_factor, source_eye_right)
-
+        # vector to move the face so that the eyes align
+        translate_vector: tuple = tuple( np.array(TARGET_EYE_LEFT) - np.array(new_left_eye) )
 
         draw = ImageDraw.Draw(pil_img)
-        draw.line( [ source_eye_left, source_eye_right ], fill='blue', width=10 )
-        draw.line( [ start, end ], fill='red', width=10 )
 
-
-
+        pil_img = pil_img.rotate(
+            angle_deg,
+            Image.BILINEAR,
+            center=TARGET_EYE_LEFT,
+            translate=translate_vector
+        )
 
         # save new image
         save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
         pil_img.save(save_path)
         pil_img.close()
 
-        if i > 18:
-            quit()
+        # if i > 130:
+        #     quit()
 
-
-
-
-
-
-
-    # cv2.imshow('img', cv2.resize(img, (388, 690) ))
-
-    # if cv2.waitKey( 0 ) == ord('q'):
-    #     quit()
-
-# cv2.destroyAllWindows()
 
