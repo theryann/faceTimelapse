@@ -58,7 +58,7 @@ def calc_new_eye_pos(scaling_factor: float, old_pos: tuple) -> tuple:
     return tuple( new_pos.astype(int) )
 
 
-
+number_of_images = len(list(pathlib.Path(PIC_PATH).iterdir()))
 
 for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
 
@@ -74,92 +74,101 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
     )
 
     # loop over biggest face, so only executed if found one at all
-    for (x1, y1, width_face, height_face) in sorted(list(faces), key=lambda f:f[2])[:1]:
-        # cv2.rectangle( img, (x1, y1), (x1+width_face, y1+height_face), (255, 255, 0), 6 )
 
-        # find Eyes
-        faceROI = img[y1:y1+height_face, x1:x1+width_face]
-
-        eyes = eyes_cascade.detectMultiScale(
-            faceROI,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(200, 100),
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-
-        if len(list(eyes)) != 2:
-            continue
-
-        source_eye_left: tuple[int, int]
-        source_eye_right: tuple[int, int]
-
-        # find both eyes, limit list to two eyes, don't know if they're ever more than two
-        for j, (x2, y2, width_eye, height_eye) in enumerate(eyes[:2]):
-            eye_center = ( x1 + x2 + width_eye // 2, y1 + y2 + height_eye // 2 )
-            radius = int(round( width_eye / 2 ))
-
-            # blindly assign eyes to variables and swap them if the right eye is more left than the left eye
-            if j == 0:
-                source_eye_left  = eye_center
-            else:
-                source_eye_right = eye_center
-
-                if source_eye_right[0] < source_eye_left[0]:
-                    source_eye_left, source_eye_right = source_eye_right, source_eye_left
-
-            cv2.rectangle( img, (x1+x2, y1+y2), (x1+x2+width_eye, y1+y2+height_eye), (255, 255, 0), 6 )
-
-        # set global target eye coordinates
-        if i == 0:
-            TARGET_EYE_LEFT  = source_eye_left
-            TARGET_EYE_RIGHT = source_eye_right
-            TARGET_DIMENSIONS = img.shape[1], img.shape[0] # swap order because of vertical mode
-
-        ###################
-        # TRANSFORM Image #
-        ###################
-
-        pil_img: Image = Image.open( str(img_path) )
-        pil_img = pil_img.rotate(90, expand=True)  # ensure that the horizontal dimensions are recognized
-
-        # get Vectors between the eyes to get angle between eye line
-        a = np.array(source_eye_right) - np.array(source_eye_left) # Vector between the eyes of the current face
-        b = np.array(TARGET_EYE_RIGHT) - np.array(TARGET_EYE_LEFT) # Vector between target eyes
+    found_faces = sorted(list(faces), key=lambda f:f[2])[:1]
+    if len(found_faces) == 0:
+        continue
+    x1, y1, width_face, height_face = found_faces[0]
 
 
-        # scale face to match target
-        face_scaling_factor: float = 1 / ( np.linalg.norm(a) / np.linalg.norm(b) ) # ratio of current face to target face
-        pil_img = scale_image( pil_img, face_scaling_factor )
+    # cv2.rectangle( img, (x1, y1), (x1+width_face, y1+height_face), (255, 255, 0), 6 )
+
+    # find Eyes
+    faceROI = img[y1:y1+height_face, x1:x1+width_face]
+
+    eyes = eyes_cascade.detectMultiScale(
+        faceROI,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(200, 100),
+        flags=cv2.CASCADE_SCALE_IMAGE
+    )
+
+    if len(list(eyes)) != 2:
+        continue
+
+    source_eye_left: tuple[int, int]
+    source_eye_right: tuple[int, int]
+
+    # find both eyes, limit list to two eyes, don't know if they're ever more than two
+    for j, (x2, y2, width_eye, height_eye) in enumerate(eyes[:2]):
+        eye_center = ( x1 + x2 + width_eye // 2, y1 + y2 + height_eye // 2 )
+        radius = int(round( width_eye / 2 ))
+
+        # blindly assign eyes to variables and swap them if the right eye is more left than the left eye
+        if j == 0:
+            source_eye_left  = eye_center
+        else:
+            source_eye_right = eye_center
+
+            if source_eye_right[0] < source_eye_left[0]:
+                source_eye_left, source_eye_right = source_eye_right, source_eye_left
+
+        cv2.rectangle( img, (x1+x2, y1+y2), (x1+x2+width_eye, y1+y2+height_eye), (255, 255, 0), 6 )
+
+    # set global target eye coordinates
+    if i == 0:
+        TARGET_EYE_LEFT  = source_eye_left
+        TARGET_EYE_RIGHT = source_eye_right
+        TARGET_DIMENSIONS = img.shape[1], img.shape[0] # swap order because of vertical mode
+
+    ###################
+    # TRANSFORM Image #
+    ###################
+
+    pil_img: Image = Image.open( str(img_path) )
+    pil_img = pil_img.rotate(90, expand=True)  # ensure that the horizontal dimensions are recognized
+
+    # get Vectors between the eyes to get angle between eye line
+    a = np.array(source_eye_right) - np.array(source_eye_left) # Vector between the eyes of the current face
+    b = np.array(TARGET_EYE_RIGHT) - np.array(TARGET_EYE_LEFT) # Vector between target eyes
 
 
-        # rotate face to right angle
-        new_left_eye  = calc_new_eye_pos(face_scaling_factor, source_eye_left)
-        new_right_eye = calc_new_eye_pos(face_scaling_factor, source_eye_right)
+    # scale face to match target
+    face_scaling_factor: float = 1 / ( np.linalg.norm(a) / np.linalg.norm(b) ) # ratio of current face to target face
+    pil_img = scale_image( pil_img, face_scaling_factor )
 
-        # angle to rotate the face by
-        angle_deg: float = np.degrees( np.arccos(
-            np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
-        ))
 
-        # vector to move the face so that the eyes align
-        translate_vector: tuple = tuple( np.array(TARGET_EYE_LEFT) - np.array(new_left_eye) )
+    # rotate face to right angle
+    new_left_eye  = calc_new_eye_pos(face_scaling_factor, source_eye_left)
+    new_right_eye = calc_new_eye_pos(face_scaling_factor, source_eye_right)
 
-        draw = ImageDraw.Draw(pil_img)
+    # angle to rotate the face by
+    angle_deg: float = np.degrees( np.arccos(
+        np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
+    ))
 
-        pil_img = pil_img.rotate(
-            angle_deg,
-            Image.BILINEAR,
-            center=TARGET_EYE_LEFT,
-            translate=translate_vector
-        )
+    # vector to move the face so that the eyes align
+    translate_vector: tuple = tuple( np.array(TARGET_EYE_LEFT) - np.array(new_left_eye) )
 
-        # save new image
-        save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
-        pil_img.save(save_path)
-        pil_img.close()
+    draw = ImageDraw.Draw(pil_img)
 
-        # if i > 130:
-        #     quit()
+    pil_img = pil_img.rotate(
+        angle_deg,
+        Image.BILINEAR,
+        center=TARGET_EYE_LEFT,
+        translate=translate_vector
+    )
+
+    # save new image
+    save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
+    pil_img.save(save_path)
+    pil_img.close()
+
+    if i > 10:
+        quit()
+
+    print(f'\rface:\t{i}/{number_of_images}\t({round(i/number_of_images*100, 2)}%)' , end='')
+
 
 
