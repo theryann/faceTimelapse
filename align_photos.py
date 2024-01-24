@@ -143,32 +143,45 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
     new_left_eye  = calc_new_eye_pos(face_scaling_factor, source_eye_left)
     new_right_eye = calc_new_eye_pos(face_scaling_factor, source_eye_right)
 
+    # vector to move the face so that the eyes align
+    translate_vector: tuple = tuple( np.array(TARGET_EYE_LEFT) - np.array(new_left_eye) )
+
+
     # angle to rotate the face by
     angle_deg: float = np.degrees( np.arccos(
         np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
     ))
 
-    # vector to move the face so that the eyes align
-    translate_vector: tuple = tuple( np.array(TARGET_EYE_LEFT) - np.array(new_left_eye) )
+    final_right_eye = tuple( np.array(new_right_eye) + np.array(translate_vector) )
+    if final_right_eye[1] < TARGET_EYE_RIGHT[1]:
+        angle_deg = -angle_deg
+
 
     draw = ImageDraw.Draw(pil_img)
+    draw.rectangle( (new_left_eye[0]-10, new_left_eye[1]-10,new_left_eye[0]+10,new_left_eye[1]+10) , fill='yellow')
+    draw.rectangle( (new_right_eye[0]-10, new_right_eye[1]-10,new_right_eye[0]+10,new_right_eye[1]+10) , fill='yellow')
+    draw.line( (new_left_eye, new_right_eye), fill='yellow', width=8 )
+
 
     pil_img = pil_img.rotate(
         angle_deg,
-        Image.BILINEAR,
-        center=TARGET_EYE_LEFT,
+        Image.BICUBIC,
+        center=new_left_eye,
         translate=translate_vector
     )
+
+    draw = ImageDraw.Draw(pil_img)
+    draw.rectangle( (TARGET_EYE_RIGHT[0]-10, TARGET_EYE_RIGHT[1]-10,TARGET_EYE_RIGHT[0]+10,TARGET_EYE_RIGHT[1]+10) , fill='red')
+    draw.line( (TARGET_EYE_LEFT, TARGET_EYE_RIGHT), fill='red', width=8 )
 
     # save new image
     save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
     pil_img.save(save_path)
     pil_img.close()
 
-    if i > 10:
-        quit()
+    # if i > 30:
+    #     quit()
 
     print(f'\rface:\t{i}/{number_of_images}\t({round(i/number_of_images*100, 2)}%)' , end='')
-
 
 
