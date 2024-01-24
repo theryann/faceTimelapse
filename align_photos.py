@@ -146,7 +146,6 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
     # vector to move the face so that the eyes align
     translate_vector: tuple = tuple( np.array(TARGET_EYE_LEFT) - np.array(new_left_eye) )
 
-
     # angle to rotate the face by
     angle_deg: float = np.degrees( np.arccos(
         np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
@@ -156,13 +155,6 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
     if final_right_eye[1] < TARGET_EYE_RIGHT[1]:
         angle_deg = -angle_deg
 
-
-    draw = ImageDraw.Draw(pil_img)
-    draw.rectangle( (new_left_eye[0]-10, new_left_eye[1]-10,new_left_eye[0]+10,new_left_eye[1]+10) , fill='yellow')
-    draw.rectangle( (new_right_eye[0]-10, new_right_eye[1]-10,new_right_eye[0]+10,new_right_eye[1]+10) , fill='yellow')
-    draw.line( (new_left_eye, new_right_eye), fill='yellow', width=8 )
-
-
     pil_img = pil_img.rotate(
         angle_deg,
         Image.BICUBIC,
@@ -170,9 +162,6 @@ for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
         translate=translate_vector
     )
 
-    draw = ImageDraw.Draw(pil_img)
-    draw.rectangle( (TARGET_EYE_RIGHT[0]-10, TARGET_EYE_RIGHT[1]-10,TARGET_EYE_RIGHT[0]+10,TARGET_EYE_RIGHT[1]+10) , fill='red')
-    draw.line( (TARGET_EYE_LEFT, TARGET_EYE_RIGHT), fill='red', width=8 )
 
     # save new image
     save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
