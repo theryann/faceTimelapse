@@ -1,10 +1,10 @@
-from PIL import Image, ImageDraw
+from PIL import Image
 import pathlib
 import cv2
 import numpy as np
 import sys
 
-TARGET_DIMENSIONS: tuple[int, int]
+TARGET_DIMENSIONS: tuple[int, int] = tuple()
 
 
 def scale_image(image: Image, factor: float) -> Image:
@@ -90,8 +90,6 @@ def main(append=False) -> None:
         x1, y1, width_face, height_face = found_faces[0]
 
 
-        # cv2.rectangle( img, (x1, y1), (x1+width_face, y1+height_face), (255, 255, 0), 6 )
-
         # find Eyes
         faceROI = img[y1:y1+height_face, x1:x1+width_face]
 
@@ -112,7 +110,6 @@ def main(append=False) -> None:
         # find both eyes, limit list to two eyes, don't know if they're ever more than two
         for j, (x2, y2, width_eye, height_eye) in enumerate(eyes[:2]):
             eye_center = ( x1 + x2 + width_eye // 2, y1 + y2 + height_eye // 2 )
-            radius = int(round( width_eye / 2 ))
 
             # blindly assign eyes to variables and swap them if the right eye is more left than the left eye
             if j == 0:
@@ -126,7 +123,7 @@ def main(append=False) -> None:
             cv2.rectangle( img, (x1+x2, y1+y2), (x1+x2+width_eye, y1+y2+height_eye), (255, 255, 0), 6 )
 
         # set global target eye coordinates
-        if i == 0:
+        if not TARGET_DIMENSIONS:
             TARGET_EYE_LEFT  = source_eye_left
             TARGET_EYE_RIGHT = source_eye_right
             TARGET_DIMENSIONS = img.shape[1], img.shape[0] # swap order because of vertical mode
@@ -176,9 +173,6 @@ def main(append=False) -> None:
         save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
         pil_img.save(save_path)
         pil_img.close()
-
-        # if i > 30:
-        #     quit()
 
     print(f'\rface:\t{i}/{number_of_images}\t({round(i/number_of_images*100, 2) if i < number_of_images-1 else 100}%)' , end='\t\t\t')
 
