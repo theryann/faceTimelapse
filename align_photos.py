@@ -118,6 +118,51 @@ def find_eye_coordinates(img: Image, face: tuple):
 
     return source_eye_left, source_eye_right
 
+def align_image_by_eyes(img_path, source_eye_right, source_eye_left, ANCHOR_EYE_RIGHT, ANCHOR_EYE_LEFT) -> Image:
+    '''
+    reads in current image, aligns it to the anchor image by scaling, translating and rotating
+    so that the eyes of both images overlay
+    returns this new image
+    '''
+
+    pil_img: Image = Image.open( str(img_path) )
+    pil_img = pil_img.rotate(90, expand=True)  # ensure that the horizontal dimensions are recognized
+
+    # get Vectors between the eyes to get angle between eye line
+    a = np.array(source_eye_right) - np.array(source_eye_left) # Vector between the eyes of the current face
+    b = np.array(ANCHOR_EYE_RIGHT) - np.array(ANCHOR_EYE_LEFT) # Vector between target eyes
+
+
+    # scale face to match target
+    face_scaling_factor: float = 1 / ( np.linalg.norm(a) / np.linalg.norm(b) ) # ratio of current face to target face
+    pil_img = scale_image( pil_img, face_scaling_factor )
+
+
+    # rotate face to right angle
+    new_left_eye  = calc_new_eye_pos(face_scaling_factor, source_eye_left)
+    new_right_eye = calc_new_eye_pos(face_scaling_factor, source_eye_right)
+
+    # vector to move the face so that the eyes align
+    translate_vector: tuple = tuple( np.array(ANCHOR_EYE_LEFT) - np.array(new_left_eye) )
+
+    # angle to rotate the face by
+    angle_deg: float = np.degrees( np.arccos(
+        np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
+    ))
+
+    final_right_eye = tuple( np.array(new_right_eye) + np.array(translate_vector) )
+    if final_right_eye[1] < ANCHOR_EYE_RIGHT[1]:
+        angle_deg = -angle_deg
+
+    pil_img = pil_img.rotate(
+        angle_deg,
+        Image.BICUBIC,
+        center=new_left_eye,
+        translate=translate_vector
+    )
+    return pil_img
+
+
 def main(append=False) -> None:
     global ANCHOR_DIMENSIONS
 
@@ -157,49 +202,11 @@ def main(append=False) -> None:
             ANCHOR_EYE_RIGHT = source_eye_right
             ANCHOR_DIMENSIONS = img.shape[1], img.shape[0] # swap order because of vertical mode
 
-        ###################
-        # TRANSFORM Image #
-        ###################
-
-        pil_img: Image = Image.open( str(img_path) )
-        pil_img = pil_img.rotate(90, expand=True)  # ensure that the horizontal dimensions are recognized
-
-        # get Vectors between the eyes to get angle between eye line
-        a = np.array(source_eye_right) - np.array(source_eye_left) # Vector between the eyes of the current face
-        b = np.array(ANCHOR_EYE_RIGHT) - np.array(ANCHOR_EYE_LEFT) # Vector between target eyes
-
-
-        # scale face to match target
-        face_scaling_factor: float = 1 / ( np.linalg.norm(a) / np.linalg.norm(b) ) # ratio of current face to target face
-        pil_img = scale_image( pil_img, face_scaling_factor )
-
-
-        # rotate face to right angle
-        new_left_eye  = calc_new_eye_pos(face_scaling_factor, source_eye_left)
-        new_right_eye = calc_new_eye_pos(face_scaling_factor, source_eye_right)
-
-        # vector to move the face so that the eyes align
-        translate_vector: tuple = tuple( np.array(ANCHOR_EYE_LEFT) - np.array(new_left_eye) )
-
-        # angle to rotate the face by
-        angle_deg: float = np.degrees( np.arccos(
-            np.dot(a, b) / ( np.linalg.norm(a) * np.linalg.norm(b) )
-        ))
-
-        final_right_eye = tuple( np.array(new_right_eye) + np.array(translate_vector) )
-        if final_right_eye[1] < ANCHOR_EYE_RIGHT[1]:
-            angle_deg = -angle_deg
-
-        pil_img = pil_img.rotate(
-            angle_deg,
-            Image.BICUBIC,
-            center=new_left_eye,
-            translate=translate_vector
-        )
-
+        # TRANSFORM Image
+        pil_img: Image = align_image_by_eyes(img_path, source_eye_right, source_eye_left, ANCHOR_EYE_RIGHT, ANCHOR_EYE_LEFT)
 
         # save new image
-        save_path = pathlib.Path(EXPORT_PATH) / f'{i}.jpg'
+        save_path = pathlib.Path(EXPORT_PATH) / f'{i:0>5}.jpg'
         pil_img.save(save_path)
         pil_img.close()
 
