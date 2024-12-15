@@ -4,7 +4,13 @@ import cv2
 import numpy as np
 import sys
 
-TARGET_DIMENSIONS: tuple[int, int] = tuple()
+ANCHOR_DIMENSIONS: tuple[int, int] = tuple()
+
+FACE_CASCADE_PATH = pathlib.Path(cv2.__file__).parent.absolute() / 'data/haarcascade_frontalface_default.xml'
+EYES_CASCADE_PATH = pathlib.Path(cv2.__file__).parent.absolute() / 'data/haarcascade_eye.xml'
+
+face_cascade = cv2.CascadeClassifier( str(FACE_CASCADE_PATH) )
+eyes_cascade = cv2.CascadeClassifier( str(EYES_CASCADE_PATH) )
 
 
 def scale_image(image: Image, factor: float) -> Image:
@@ -13,16 +19,17 @@ def scale_image(image: Image, factor: float) -> Image:
     this avoids rounding errors that result in widths/heights being off by one pixel.
     '''
 
-    res_image: Image = Image.new('RGB', TARGET_DIMENSIONS)
+    res_image: Image = Image.new('RGB', ANCHOR_DIMENSIONS)
 
     # scale the image
-    image = image.resize(
-        ( int(image.size[0] * factor), int(image.size[1] * factor) )
-    )
+    image = image.resize((
+        int(image.size[0] * factor),
+        int(image.size[1] * factor)
+    ))
 
     if factor > 1:
         # crop upscaled image to the target dimensions
-        h, v = (image.size[0] - TARGET_DIMENSIONS[0]) // 2, (image.size[1] - TARGET_DIMENSIONS[1]) // 2
+        h, v = (image.size[0] - ANCHOR_DIMENSIONS[0]) // 2, (image.size[1] - ANCHOR_DIMENSIONS[1]) // 2
 
         image = image.crop(( h, v, image.size[0] - h, image.size[1] - v ))
 
@@ -38,28 +45,88 @@ def calc_new_eye_pos(scaling_factor: float, old_pos: tuple) -> tuple:
 
     if scaling_factor > 1:
         h, v = tuple(
-            ( np.array(TARGET_DIMENSIONS) * scaling_factor - np.array(TARGET_DIMENSIONS) ) // 2
+            ( np.array(ANCHOR_DIMENSIONS) * scaling_factor - np.array(ANCHOR_DIMENSIONS) ) // 2
         )
 
         new_pos -= np.array([ h, v ])
 
     return tuple( new_pos.astype(int) )
 
+def find_face_coordinates(img: Image):
+    '''
+    returns the room of interest (x, y, w, h) of the biggest detected face
+    or None if no face found
+    '''
+    global face_cascade
+
+    faces = face_cascade.detectMultiScale(
+        img,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(300, 300),
+        flags=cv2.CASCADE_SCALE_IMAGE
+    )
+
+    found_faces = sorted(list(faces), key=lambda f:f[2])[:1]
+
+    if len(found_faces) == 0:
+        return None
+
+    return found_faces[0]
+
+def find_eye_coordinates(img: Image, face: tuple):
+    '''
+    returns the coordinates of the eyes as tuples or None of no eyes detected
+    '''
+
+    face_x_start, face_y_start, width_face, height_face = face
+
+    # find Eyes
+    faceROI = img[
+        face_y_start: face_y_start + height_face,
+        face_x_start: face_x_start + width_face
+    ]
+
+    eyes = eyes_cascade.detectMultiScale(
+        faceROI,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(200, 100),
+        flags=cv2.CASCADE_SCALE_IMAGE
+    )
+
+    if len(list(eyes)) != 2:
+        return None
+
+    source_eye_left: tuple[int, int]
+    source_eye_right: tuple[int, int]
+
+    # find both eyes, limit list to two eyes, don't know if they're ever more than two
+    for j, (eye_x, eye_y, width_eye, height_eye) in enumerate(eyes[:2]):
+        eye_center = ( face_x_start + eye_x + width_eye // 2, face_y_start + eye_y + height_eye // 2 )
+
+        # blindly assign eyes to variables and swap them if the right eye is more left than the left eye
+        if j == 0:
+            source_eye_left  = eye_center
+        else:
+            source_eye_right = eye_center
+
+            if source_eye_right[0] < source_eye_left[0]:
+                source_eye_left, source_eye_right = source_eye_right, source_eye_left
+
+        cv2.rectangle( img, (face_x_start+eye_x, face_y_start+eye_y), (face_x_start+eye_x+width_eye, face_y_start+eye_y+height_eye), (255, 255, 0), 6 )
+
+    return source_eye_left, source_eye_right
+
 def main(append=False) -> None:
-    global TARGET_DIMENSIONS
+    global ANCHOR_DIMENSIONS
 
     PIC_PATH = 'pictures'
     EXPORT_PATH = 'out'
 
-    FACE_CASCADE_PATH = pathlib.Path(cv2.__file__).parent.absolute() / 'data/haarcascade_frontalface_default.xml'
-    EYES_CASCADE_PATH = pathlib.Path(cv2.__file__).parent.absolute() / 'data/haarcascade_eye.xml'
 
-    face_cascade = cv2.CascadeClassifier( str(FACE_CASCADE_PATH) )
-    eyes_cascade = cv2.CascadeClassifier( str(EYES_CASCADE_PATH) )
-
-
-    TARGET_EYE_LEFT: tuple[int, int]
-    TARGET_EYE_RIGHT: tuple[int, int]
+    ANCHOR_EYE_LEFT: tuple[int, int]
+    ANCHOR_EYE_RIGHT: tuple[int, int]
 
     number_of_images = len(list(pathlib.Path(PIC_PATH).iterdir())) # number of images in the input directory
     number_already_stabilized = len(list(pathlib.Path(EXPORT_PATH).iterdir())) # numer of images in the out directory.
@@ -73,60 +140,22 @@ def main(append=False) -> None:
 
         img = cv2.imread( str(img_path), 1)  # load image in grayscale
 
-        # Faces
-        faces = face_cascade.detectMultiScale(
-            img,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(300, 300),
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-
-        # loop over biggest face, so only executed if found one at all
-
-        found_faces = sorted(list(faces), key=lambda f:f[2])[:1]
-        if len(found_faces) == 0:
-            continue
-        x1, y1, width_face, height_face = found_faces[0]
-
-
-        # find Eyes
-        faceROI = img[y1:y1+height_face, x1:x1+width_face]
-
-        eyes = eyes_cascade.detectMultiScale(
-            faceROI,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(200, 100),
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-
-        if len(list(eyes)) != 2:
+        face = find_face_coordinates(img)
+        if face is None:
             continue
 
-        source_eye_left: tuple[int, int]
-        source_eye_right: tuple[int, int]
+        eyes = find_eye_coordinates(img, face)
+        if eyes is None:
+            continue
 
-        # find both eyes, limit list to two eyes, don't know if they're ever more than two
-        for j, (x2, y2, width_eye, height_eye) in enumerate(eyes[:2]):
-            eye_center = ( x1 + x2 + width_eye // 2, y1 + y2 + height_eye // 2 )
-
-            # blindly assign eyes to variables and swap them if the right eye is more left than the left eye
-            if j == 0:
-                source_eye_left  = eye_center
-            else:
-                source_eye_right = eye_center
-
-                if source_eye_right[0] < source_eye_left[0]:
-                    source_eye_left, source_eye_right = source_eye_right, source_eye_left
-
-            cv2.rectangle( img, (x1+x2, y1+y2), (x1+x2+width_eye, y1+y2+height_eye), (255, 255, 0), 6 )
+        source_eye_left:  tuple[int, int] = eyes[0]
+        source_eye_right: tuple[int, int] = eyes[1]
 
         # set global target eye coordinates
-        if not TARGET_DIMENSIONS:
-            TARGET_EYE_LEFT  = source_eye_left
-            TARGET_EYE_RIGHT = source_eye_right
-            TARGET_DIMENSIONS = img.shape[1], img.shape[0] # swap order because of vertical mode
+        if not ANCHOR_DIMENSIONS:
+            ANCHOR_EYE_LEFT  = source_eye_left
+            ANCHOR_EYE_RIGHT = source_eye_right
+            ANCHOR_DIMENSIONS = img.shape[1], img.shape[0] # swap order because of vertical mode
 
         ###################
         # TRANSFORM Image #
@@ -137,7 +166,7 @@ def main(append=False) -> None:
 
         # get Vectors between the eyes to get angle between eye line
         a = np.array(source_eye_right) - np.array(source_eye_left) # Vector between the eyes of the current face
-        b = np.array(TARGET_EYE_RIGHT) - np.array(TARGET_EYE_LEFT) # Vector between target eyes
+        b = np.array(ANCHOR_EYE_RIGHT) - np.array(ANCHOR_EYE_LEFT) # Vector between target eyes
 
 
         # scale face to match target
@@ -150,7 +179,7 @@ def main(append=False) -> None:
         new_right_eye = calc_new_eye_pos(face_scaling_factor, source_eye_right)
 
         # vector to move the face so that the eyes align
-        translate_vector: tuple = tuple( np.array(TARGET_EYE_LEFT) - np.array(new_left_eye) )
+        translate_vector: tuple = tuple( np.array(ANCHOR_EYE_LEFT) - np.array(new_left_eye) )
 
         # angle to rotate the face by
         angle_deg: float = np.degrees( np.arccos(
@@ -158,7 +187,7 @@ def main(append=False) -> None:
         ))
 
         final_right_eye = tuple( np.array(new_right_eye) + np.array(translate_vector) )
-        if final_right_eye[1] < TARGET_EYE_RIGHT[1]:
+        if final_right_eye[1] < ANCHOR_EYE_RIGHT[1]:
             angle_deg = -angle_deg
 
         pil_img = pil_img.rotate(
