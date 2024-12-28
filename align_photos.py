@@ -87,15 +87,23 @@ def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
             )
 
     # store the darkest 10% of pixels in seperate array
-    luminace_list.sort(key=lambda pix: pix[2])
-    lowest_percentile = int(len(luminace_list) / 10)
+    luminace_list.sort(key=lambda pix: pix[2], reverse=False)
+    lowest_percentile = int(len(luminace_list) / 5)
 
     # calculate the medium x and y of the this array of darkest pixels
-    dark_list: np.array = np.array( luminace_list[:lowest_percentile] )
 
-    medians = np.median(dark_list, axis=0)
+    medians_dark = np.median(
+        np.array( luminace_list[:lowest_percentile] ),
+        axis=0
+    )
 
-    return int(medians[0]) + offset_x, int(medians[1]) + offest_y
+    center_x = img_eye.shape[1] // 2
+    center_y = img_eye.shape[0] // 2
+
+    local_x = int(np.mean([ medians_dark[0], medians_dark[0], medians_dark[0], center_x, luminace_list[0][0] ]))
+    local_y = int(np.mean([ medians_dark[1], medians_dark[1], center_y, luminace_list[0][1] ]))
+
+    return local_x + offset_x, local_y + offest_y
 
 
 
@@ -134,9 +142,8 @@ def find_eye_coordinates(img: Image, face: tuple):
             eye_y + height_eye // 4: eye_y + (height_eye - height_eye // 4),
             eye_x: eye_x + width_eye
         ]
-        print(eye_x, eye_y + height_eye)
 
-        darkest_point = find_darkest_area(eyeROI, eye_x, eye_y + height_eye)
+        darkest_point = find_darkest_area(eyeROI, face_x_start + eye_x, face_y_start + eye_y + height_eye // 4)
 
         # blindly assign eyes to variables and swap them if the right eye is more left than the left eye
         if j == 0:
@@ -146,15 +153,6 @@ def find_eye_coordinates(img: Image, face: tuple):
 
             if source_eye_right[0] < source_eye_left[0]:
                 source_eye_left, source_eye_right = source_eye_right, source_eye_left
-
-        # cv2.imshow('s', faceROI[
-        #     eye_y + height_eye // 4: eye_y + (height_eye - height_eye // 4),
-        #     eye_x: eye_x + width_eye
-        # ] )
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-
-        # cv2.rectangle( img, (face_x_start+eye_x, face_y_start+eye_y), (face_x_start+eye_x+width_eye, face_y_start+eye_y+height_eye), (255, 255, 0), 6 )
 
     return source_eye_left, source_eye_right
 
@@ -174,8 +172,8 @@ def align_image_by_eyes(img_path, source_eye_right, source_eye_left, ANCHOR_EYE_
 
     if debug:
         draw = ImageDraw.Draw(pil_img)
-        draw.ellipse((source_eye_left[0]-5, source_eye_left[1]-5, source_eye_left[0]+5, source_eye_left[1]+5), 'red')
-        draw.ellipse((source_eye_right[0]-5, source_eye_right[1]-5, source_eye_right[0]+5, source_eye_right[1]+5), 'red')
+        draw.ellipse((source_eye_left[0]-5, source_eye_left[1]-5, source_eye_left[0]+5, source_eye_left[1]+5), 'green')
+        draw.ellipse((source_eye_right[0]-5, source_eye_right[1]-5, source_eye_right[0]+5, source_eye_right[1]+5), 'green')
 
     # scale face to match target
     face_scaling_factor: float = 1 / ( np.linalg.norm(a) / np.linalg.norm(b) ) # ratio of current face to target face
@@ -221,6 +219,8 @@ def main(append=False, debug=False) -> None:
     number_already_stabilized = len(list(pathlib.Path(EXPORT_PATH).iterdir())) # numer of images in the out directory.
 
     for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
+        # if ANCHOR_DIMENSIONS and i < 115:
+        #     continue
 
         if append:
             if 0 < i < number_already_stabilized - 1:
@@ -255,10 +255,10 @@ def main(append=False, debug=False) -> None:
         pil_img.close()
 
         if debug:
-            if i > 10:
+            if i > 800:
                 quit()
 
-    print(f'\rface:\t{i}/{number_of_images}\t({round(i/number_of_images*100, 2) if i < number_of_images-1 else 100}%)' , end='\t\t\t')
+        print(f'\rface:\t{i}/{number_of_images}\t({round(i/number_of_images*100, 2) if i < number_of_images-1 else 100}%)' , end='\t\t\t')
 
 
 if __name__ == '__main__':
