@@ -74,6 +74,31 @@ def find_face_coordinates(img: Image):
 
     return found_faces[0]
 
+def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
+    '''
+    finds the darkest pixels and returns the medium coordinate from them
+    '''
+    # create a list that holds the coordinates and luminancy of all the pixels
+    luminace_list: list[tuple] = []
+    for y in range(img_eye.shape[0]):
+        for x in range(img_eye.shape[1]):
+            luminace_list.append(
+                (x, y, np.sum( img_eye[y][x] ) / 3)
+            )
+
+    # store the darkest 10% of pixels in seperate array
+    luminace_list.sort(key=lambda pix: pix[2])
+    lowest_percentile = int(len(luminace_list) / 10)
+
+    # calculate the medium x and y of the this array of darkest pixels
+    dark_list: np.array = np.array( luminace_list[:lowest_percentile] )
+
+    medians = np.median(dark_list, axis=0)
+
+    return int(medians[0]) + offset_x, int(medians[1]) + offest_y
+
+
+
 def find_eye_coordinates(img: Image, face: tuple):
     '''
     returns the coordinates of the eyes as tuples or None of no eyes detected
@@ -105,16 +130,31 @@ def find_eye_coordinates(img: Image, face: tuple):
     for j, (eye_x, eye_y, width_eye, height_eye) in enumerate(eyes[:2]):
         eye_center = ( face_x_start + eye_x + width_eye // 2, face_y_start + eye_y + height_eye // 2 )
 
+        eyeROI = faceROI[
+            eye_y + height_eye // 4: eye_y + (height_eye - height_eye // 4),
+            eye_x: eye_x + width_eye
+        ]
+        print(eye_x, eye_y + height_eye)
+
+        darkest_point = find_darkest_area(eyeROI, eye_x, eye_y + height_eye)
+
         # blindly assign eyes to variables and swap them if the right eye is more left than the left eye
         if j == 0:
-            source_eye_left  = eye_center
+            source_eye_left  = darkest_point
         else:
-            source_eye_right = eye_center
+            source_eye_right = darkest_point
 
             if source_eye_right[0] < source_eye_left[0]:
                 source_eye_left, source_eye_right = source_eye_right, source_eye_left
 
-        cv2.rectangle( img, (face_x_start+eye_x, face_y_start+eye_y), (face_x_start+eye_x+width_eye, face_y_start+eye_y+height_eye), (255, 255, 0), 6 )
+        # cv2.imshow('s', faceROI[
+        #     eye_y + height_eye // 4: eye_y + (height_eye - height_eye // 4),
+        #     eye_x: eye_x + width_eye
+        # ] )
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+
+        # cv2.rectangle( img, (face_x_start+eye_x, face_y_start+eye_y), (face_x_start+eye_x+width_eye, face_y_start+eye_y+height_eye), (255, 255, 0), 6 )
 
     return source_eye_left, source_eye_right
 
