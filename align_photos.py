@@ -1,4 +1,4 @@
-from PIL import Image
+from PIL import Image, ImageDraw
 import pathlib
 import cv2
 import numpy as np
@@ -118,7 +118,7 @@ def find_eye_coordinates(img: Image, face: tuple):
 
     return source_eye_left, source_eye_right
 
-def align_image_by_eyes(img_path, source_eye_right, source_eye_left, ANCHOR_EYE_RIGHT, ANCHOR_EYE_LEFT) -> Image:
+def align_image_by_eyes(img_path, source_eye_right, source_eye_left, ANCHOR_EYE_RIGHT, ANCHOR_EYE_LEFT, debug=False) -> Image:
     '''
     reads in current image, aligns it to the anchor image by scaling, translating and rotating
     so that the eyes of both images overlay
@@ -132,6 +132,10 @@ def align_image_by_eyes(img_path, source_eye_right, source_eye_left, ANCHOR_EYE_
     a = np.array(source_eye_right) - np.array(source_eye_left) # Vector between the eyes of the current face
     b = np.array(ANCHOR_EYE_RIGHT) - np.array(ANCHOR_EYE_LEFT) # Vector between target eyes
 
+    if debug:
+        draw = ImageDraw.Draw(pil_img)
+        draw.ellipse((source_eye_left[0]-5, source_eye_left[1]-5, source_eye_left[0]+5, source_eye_left[1]+5), 'red')
+        draw.ellipse((source_eye_right[0]-5, source_eye_right[1]-5, source_eye_right[0]+5, source_eye_right[1]+5), 'red')
 
     # scale face to match target
     face_scaling_factor: float = 1 / ( np.linalg.norm(a) / np.linalg.norm(b) ) # ratio of current face to target face
@@ -163,7 +167,7 @@ def align_image_by_eyes(img_path, source_eye_right, source_eye_left, ANCHOR_EYE_
     return pil_img
 
 
-def main(append=False) -> None:
+def main(append=False, debug=False) -> None:
     global ANCHOR_DIMENSIONS
 
     PIC_PATH = 'pictures'
@@ -203,12 +207,16 @@ def main(append=False) -> None:
             ANCHOR_DIMENSIONS = img.shape[1], img.shape[0] # swap order because of vertical mode
 
         # TRANSFORM Image
-        pil_img: Image = align_image_by_eyes(img_path, source_eye_right, source_eye_left, ANCHOR_EYE_RIGHT, ANCHOR_EYE_LEFT)
+        pil_img: Image = align_image_by_eyes(img_path, source_eye_right, source_eye_left, ANCHOR_EYE_RIGHT, ANCHOR_EYE_LEFT, debug=debug)
 
         # save new image
         save_path = pathlib.Path(EXPORT_PATH) / f'{i:0>5}.jpg'
         pil_img.save(save_path)
         pil_img.close()
+
+        if debug:
+            if i > 10:
+                quit()
 
     print(f'\rface:\t{i}/{number_of_images}\t({round(i/number_of_images*100, 2) if i < number_of_images-1 else 100}%)' , end='\t\t\t')
 
@@ -218,6 +226,9 @@ if __name__ == '__main__':
 
     if '-a' in args or '--append' in args:
         main(append=True)
+
+    if '-d' in args or '--debug' in args:
+        main(debug=True)
 
     else:
         main()
