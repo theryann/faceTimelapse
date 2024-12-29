@@ -82,9 +82,11 @@ def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
     luminace_list: list[tuple] = []
     for y in range(img_eye.shape[0]):
         for x in range(img_eye.shape[1]):
+            avg = np.sum( img_eye[y][x] ) / 3
             luminace_list.append(
-                (x, y, np.sum( img_eye[y][x] ) / 3)
+                (x, y, avg)
             )
+            img_eye[y][x] = np.array([avg,avg,avg])
 
     # store the darkest 10% of pixels in seperate array
     luminace_list.sort(key=lambda pix: pix[2], reverse=False)
@@ -96,12 +98,25 @@ def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
         np.array( luminace_list[:lowest_percentile] ),
         axis=0
     )
-
+    medians_darker = np.median(
+        np.array( luminace_list[:int(len(luminace_list) / 20)] ),
+        axis=0
+    )
     center_x = img_eye.shape[1] // 2
     center_y = img_eye.shape[0] // 2
 
     local_x = int(np.mean([ medians_dark[0], medians_dark[0], medians_dark[0], center_x, luminace_list[0][0] ]))
     local_y = int(np.mean([ medians_dark[1], medians_dark[1], center_y, luminace_list[0][1] ]))
+
+    cv2.circle(img_eye, (int(medians_dark[0]), int(medians_dark[1])) , radius= 5, color=(255,0,0), thickness=-1)
+    cv2.circle(img_eye, (int(medians_darker[0]), int(medians_darker[1])) , radius= 5, color=(0,255,0), thickness=-1)
+    # cv2.circle(img_eye, (center_x, center_y) , radius= 5, color=(0,255,0), thickness=-1)
+    cv2.circle(img_eye, (luminace_list[0][0], luminace_list[0][1]) , radius= 5, color=(0,0,255), thickness=-1)
+    cv2.circle(img_eye, (local_x, local_y) , radius= 5, color=(0,255,255), thickness=-1)
+
+    cv2.imshow('t', img_eye)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
     return local_x + offset_x, local_y + offest_y
 
