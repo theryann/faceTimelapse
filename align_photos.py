@@ -86,7 +86,7 @@ def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
             luminace_list.append(
                 (x, y, avg)
             )
-            img_eye[y][x] = np.array([avg,avg,avg])
+            # img_eye[y][x] = np.array([avg,avg,avg])
 
     # store the darkest 10% of pixels in seperate array
     luminace_list.sort(key=lambda pix: pix[2], reverse=False)
@@ -108,17 +108,53 @@ def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
     local_x = int(np.mean([ medians_dark[0], medians_dark[0], medians_dark[0], center_x, luminace_list[0][0] ]))
     local_y = int(np.mean([ medians_dark[1], medians_dark[1], center_y, luminace_list[0][1] ]))
 
-    cv2.circle(img_eye, (int(medians_dark[0]), int(medians_dark[1])) , radius= 5, color=(255,0,0), thickness=-1)
-    cv2.circle(img_eye, (int(medians_darker[0]), int(medians_darker[1])) , radius= 5, color=(0,255,0), thickness=-1)
-    # cv2.circle(img_eye, (center_x, center_y) , radius= 5, color=(0,255,0), thickness=-1)
-    cv2.circle(img_eye, (luminace_list[0][0], luminace_list[0][1]) , radius= 5, color=(0,0,255), thickness=-1)
-    cv2.circle(img_eye, (local_x, local_y) , radius= 5, color=(0,255,255), thickness=-1)
+    # cv2.circle(img_eye, (int(medians_dark[0]), int(medians_dark[1])) , radius= 5, color=(255,0,0), thickness=-1)
+    # cv2.circle(img_eye, (int(medians_darker[0]), int(medians_darker[1])) , radius= 5, color=(0,255,0), thickness=-1)
+    # # cv2.circle(img_eye, (center_x, center_y) , radius= 5, color=(0,255,0), thickness=-1)
+    # cv2.circle(img_eye, (luminace_list[0][0], luminace_list[0][1]) , radius= 5, color=(0,0,255), thickness=-1)
+    # cv2.circle(img_eye, (local_x, local_y) , radius= 5, color=(0,255,255), thickness=-1)
 
-    cv2.imshow('t', img_eye)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # use calculated midpoint as start to find the area of the pupil
 
-    return local_x + offset_x, local_y + offest_y
+    pupil_pixels: list[tuple[int, int]] = [ (local_x, local_y)]
+    threshold_percentage: float = 0.1
+
+    anchor_luninance = np.median(np.array([
+        img_eye[local_y-1][local_x-1], img_eye[local_y-1][local_x], img_eye[local_y-1][local_x+1],
+        img_eye[local_y  ][local_x-1], img_eye[local_y  ][local_x],  img_eye[local_y  ][local_x+1],
+        img_eye[local_y+1][local_x-1], img_eye[local_y+1][local_x], img_eye[local_y+1][local_x+1],
+    ]))
+
+    def luminance_dist(rgb: np.array):
+        lum_pix = np.sum(rgb[2]) / 3
+        lum_anchor = anchor_luninance
+        # lum_anchor = np.sum(img_eye[local_y][local_x]) / 3
+        return abs(1 - lum_pix / lum_anchor  ) < threshold_percentage
+
+    for y in range(img_eye.shape[0]):
+        for x in range(img_eye.shape[1]):
+            if ( (x-local_x)**2 + (y-local_y)**2 )**0.5 > 50:
+                continue
+            if not luminance_dist(img_eye[y][x]):
+                continue
+            pupil_pixels.append((x, y))
+
+    # print(pupil_pixels)
+    # for x, y in pupil_pixels:
+    #     img_eye[y][x] = np.array([255,0,0])
+
+    medians = np.mean( np.array(pupil_pixels), axis=0 )
+    med_x = int(medians[0])
+    med_y = (int(medians[1]) + center_y) // 2
+    # med_y = center_y
+
+    # cv2.circle(img_eye, (med_x, med_y) , radius= 5, color=(255,255,255), thickness=-1)
+
+    # cv2.imshow('t', img_eye)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+
+    return med_x + offset_x, med_y + offest_y
 
 
 
@@ -234,7 +270,7 @@ def main(append=False, debug=False) -> None:
     number_already_stabilized = len(list(pathlib.Path(EXPORT_PATH).iterdir())) # numer of images in the out directory.
 
     for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
-        # if ANCHOR_DIMENSIONS and i < 115:
+        # if ANCHOR_DIMENSIONS and i < 130:
         #     continue
 
         if append:
