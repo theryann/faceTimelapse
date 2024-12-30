@@ -52,7 +52,7 @@ def calc_new_eye_pos(scaling_factor: float, old_pos: tuple) -> tuple:
 
     return tuple( new_pos.astype(int) )
 
-def find_face_coordinates(img: Image):
+def find_face_coordinates(img: np.array):
     '''
     returns the room of interest (x, y, w, h) of the biggest detected face
     or None if no face found
@@ -74,7 +74,35 @@ def find_face_coordinates(img: Image):
 
     return found_faces[0]
 
-def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
+def circle_from_three_points(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int]) -> tuple[int, int, float]:
+    '''
+    take three points as input and return x, y and radius of the circle they all lie upon.
+    Uses formular A * b = c with b being the unnown.
+
+    '''
+    A = np.array([
+        [2*a[0], 2*a[1], 1],
+        [2*b[0], 2*b[1], 1],
+        [2*c[0], 2*c[1], 1]
+    ])
+    c = np.array([
+        -( a[0]**2 + a[1]**2 ),
+        -( b[0]**2 + b[1]**2 ),
+        -( c[0]**2 + c[1]**2 )
+    ])
+    try:
+        b = np.linalg.solve(A, c)
+    except:
+        return None
+
+    # calculate x, y and radious of circle
+    x = -b[0]
+    y = -b[1]
+    r = np.sqrt( x**2 + y**2 - b[2] )
+
+    return int(x), int(y), r
+
+def find_pupil_center(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
     '''
     finds the darkest pixels and returns the medium coordinate from them
     '''
@@ -108,16 +136,15 @@ def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
     local_x = int(np.mean([ medians_dark[0], medians_dark[0], medians_dark[0], center_x, luminace_list[0][0] ]))
     local_y = int(np.mean([ medians_dark[1], medians_dark[1], center_y, luminace_list[0][1] ]))
 
-    # cv2.circle(img_eye, (int(medians_dark[0]), int(medians_dark[1])) , radius= 5, color=(255,0,0), thickness=-1)
-    # cv2.circle(img_eye, (int(medians_darker[0]), int(medians_darker[1])) , radius= 5, color=(0,255,0), thickness=-1)
-    # # cv2.circle(img_eye, (center_x, center_y) , radius= 5, color=(0,255,0), thickness=-1)
-    # cv2.circle(img_eye, (luminace_list[0][0], luminace_list[0][1]) , radius= 5, color=(0,0,255), thickness=-1)
-    # cv2.circle(img_eye, (local_x, local_y) , radius= 5, color=(0,255,255), thickness=-1)
 
     # use calculated midpoint as start to find the area of the pupil
+    reduce_image = Image.fromarray(img_eye)
+    reduce_image = reduce_image.quantize(colors = 50 ).convert('RGB')
+
+    img_eye = np.array(reduce_image)
 
     pupil_pixels: set[tuple[int, int]] = set()
-    threshold_percentage: float = 0.2
+    threshold_percentage: float = 0.1
 
     anchor_luninance = np.median(np.array([
         img_eye[local_y-1][local_x-1], img_eye[local_y-1][local_x], img_eye[local_y-1][local_x+1],
@@ -139,37 +166,68 @@ def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
 
         pupil_pixels.add( (x, y) )
 
-        find_dark_patch(x + 1, y )
-        find_dark_patch(x - 1, y )
-        find_dark_patch(x - 1, y + 1 )
-        find_dark_patch(x - 1, y - 1 )
+        try:
+            find_dark_patch(x + 1, y )
+            find_dark_patch(x - 1, y )
+            find_dark_patch(x - 1, y + 1 )
+            find_dark_patch(x - 1, y - 1 )
+        except:
+            return
 
     find_dark_patch(local_x, local_y) # start searching from first estimated eye center position
 
     while len(pupil_pixels) < 35 and threshold_percentage < 0.7:
-        threshold_percentage += 0.1
-        print(threshold_percentage)
-        pupil_pixels.clear()
-        find_dark_patch(local_x, local_y)
+        try:
+            threshold_percentage += 0.1
+            pupil_pixels.clear()
+            find_dark_patch(local_x, local_y)
+        except:
+            break
+
 
     for x, y in pupil_pixels:
         img_eye[y][x] = np.array([255,255,0])
 
 
-    med_x = int(np.mean([ coord[0] for coord in pupil_pixels ]))
-    med_y = int(np.mean([ coord[1] for coord in pupil_pixels ]))
+    med_x = int(np.nanmean([ coord[0] for coord in pupil_pixels ]))
+    med_y = int(np.nanmean([ coord[1] for coord in pupil_pixels ]))
 
-    # cv2.circle(img_eye, (med_x, med_y) , radius= 5, color=(0,255,0), thickness=-1)
+    # find three points from the lower third
+    point_a = max(pupil_pixels, key=lambda pix: pix[1]) # lowest point
+    point_c = max([pix for pix in pupil_pixels if med_y < pix[1] < point_a[1]], key=lambda pix: pix[1]) # pick most right point from points that are lower than the median
+    point_b = min([pix for pix in pupil_pixels if med_y < pix[1] < point_a[1]], key=lambda pix: pix[1]) # pick most left point from points that are lower than the median
+
+    cv2.circle(img_eye, point_a , radius= 2, color=(0,255,0), thickness=-1)
+    cv2.circle(img_eye, point_b , radius= 2, color=(0,255,0), thickness=-1)
+    cv2.circle(img_eye, point_c , radius= 2, color=(0,255,0), thickness=-1)
+
+    res = circle_from_three_points(point_a, point_b, point_c)
+    if res:
+        x, y, r = res
+        circle_center = x, y
+
+        cv2.circle(img_eye, (med_x, med_y) , radius= 5, color=(255,0,0), thickness=-1)
+        if 20 > np.linalg.norm( np.array(circle_center) - np.array((med_x, med_y)) ):
+            midpoint = (np.array(circle_center) + np.array((med_x, med_y))) / 2
+            med_x = int(midpoint[0])
+            med_y = int(midpoint[1])
+            cv2.circle(img_eye, (x, y) , radius= 5, color=(0,0,255), thickness=-1)
+
+    if 20 > np.linalg.norm( np.array((center_x, center_y)) - np.array((med_x, med_y)) ):
+        med_x = center_x
+        med_y = center_y
+
+    cv2.circle(img_eye, (med_x, med_y) , radius= 5, color=(0,255,255), thickness=-1)
 
     # cv2.imshow('t', img_eye)
-    # cv2.waitKey(0)
+    # if cv2.waitKey(0) == ord('q'):
+    #     cv2.destroyAllWindows()
+    #     quit()
     # cv2.destroyAllWindows()
 
     return med_x + offset_x, med_y + offest_y
 
-
-
-def find_eye_coordinates(img: Image, face: tuple):
+def find_eye_coordinates(img: np.array, face: tuple):
     '''
     returns the coordinates of the eyes as tuples or None of no eyes detected
     '''
@@ -205,7 +263,7 @@ def find_eye_coordinates(img: Image, face: tuple):
             eye_x: eye_x + width_eye
         ]
 
-        darkest_point = find_darkest_area(eyeROI, face_x_start + eye_x, face_y_start + eye_y + height_eye // 4)
+        darkest_point = find_pupil_center(eyeROI, face_x_start + eye_x, face_y_start + eye_y + height_eye // 4)
 
         # blindly assign eyes to variables and swap them if the right eye is more left than the left eye
         if j == 0:
@@ -281,8 +339,8 @@ def main(append=False, debug=False) -> None:
     number_already_stabilized = len(list(pathlib.Path(EXPORT_PATH).iterdir())) # numer of images in the out directory.
 
     for i, img_path in enumerate( pathlib.Path(PIC_PATH).iterdir() ):
-        # if ANCHOR_DIMENSIONS and i < 130:
-        #     continue
+        if ANCHOR_DIMENSIONS and i < 97:
+            continue
 
         if append:
             if 0 < i < number_already_stabilized - 1:
