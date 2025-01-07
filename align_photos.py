@@ -114,9 +114,9 @@ def find_darkest_area(img_eye: np.ndarray, offset_x, offest_y) -> tuple:
     cv2.circle(img_eye, (luminace_list[0][0], luminace_list[0][1]) , radius= 5, color=(0,0,255), thickness=-1)
     cv2.circle(img_eye, (local_x, local_y) , radius= 5, color=(0,255,255), thickness=-1)
 
-    cv2.imshow('t', img_eye)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.imshow('t', img_eye)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
 
     return local_x + offset_x, local_y + offest_y
 

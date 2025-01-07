@@ -19,7 +19,7 @@ class AverageFace:
         for i, img_path in enumerate(pathlib.Path(self.stable_path).iterdir()):
             print('\r' + str(img_path), end='')
 
-            # if i > 100:
+            # if not 100 < i < 200:
             #     continue
 
             with Image.open( str(img_path) ) as pil_img:
